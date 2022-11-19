@@ -297,16 +297,38 @@ class NameGenerator extends Component
     /**
      * When the form is submitted.
      */
-    public function generateNames(): void
+    public function generateNames(\Tectalic\OpenAi\Client $client): void
     {
         $validated = $this->validate();
 
         $this->clearValidation();
 
-        // TODO: Query OpenAI for the suggested business names and taglines based on the user's input.
-        $this->names = [
-            sprintf('%s %s Name 1', $validated['concept'], $validated['industry']),
-            sprintf('%s %s Name 2', $validated['concept'], $validated['industry']),
-        ];
+        $prompt = sprintf(
+            'Give me a business name and tagline for a company in the %s industry with a %s concept',
+            $validated['industry'],
+            $validated['concept'],
+        );
+        $request= $client->completions()->create(
+            new CreateRequest([
+                'model' => 'text-davinci-002',
+                'prompt' => $prompt,
+                'max_tokens' => 2048,
+                'n' => 5 //5 completions
+            ])
+            );
+
+            try {
+                /** @var \Tectalic\OpenAi\Models\Completions\CreateResponse $result */
+                $result = $request->toModel();
+                // Transform the result, as we only need to use the text from each completion choice.
+                $this->names = \Illuminate\Support\Arr::map($result->choices, function (\Tectalic\OpenAi\Models\Completions\CreateResponseChoicesItem $item) {
+                    return $item->text;
+                });
+            } catch (\Tectalic\OpenAi\Exception\ClientException $e) {
+                // Error querying OpenAI.
+                // Clear any existing results and display an error message.
+                $this->reset(['names']);
+                $this->addError('results', __('Results are temporarily unavailable. Please try again later.'));
+            }
     }
 }
